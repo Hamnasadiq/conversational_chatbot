@@ -1,6 +1,23 @@
-from agents import Agent, Runner, OpenAIChatCompletionsModel, AsyncOpenAI, set_tracing_disabled
+from agents import Agent, Runner, OpenAIChatCompletionsModel, AsyncOpenAI, set_tracing_disabled, Tool
 from dotenv import load_dotenv
+from agents.run import RunConfig
+from tavily import TavilyClient
+from agents.tool import function_tool
 import os, asyncio
+import nest_asyncio
+nest_asyncio.apply()
+
+
+tavily_client = TavilyClient(api_key=os.getenv("TAVILY_API_KEY"))
+
+@function_tool
+def web_search(query: str) -> str:
+
+    """Use Tavily to perform a web search."""
+    result = tavily_client.search(query)
+    print(f"Tool Called: web_search with query='{query}'")
+    return result['results'][0]['content'] if result['results'] else "No results found."
+
 
 load_dotenv()
 set_tracing_disabled(True)
@@ -15,24 +32,24 @@ model = OpenAIChatCompletionsModel(
     openai_client=provider,
 )
 
+
+
 async def MyAgent(user_query, history=None):
-    # Format the history into a single string for the agent
     conversation = ""
     if history:
         for message in history:
             role = message["role"]
             content = message["content"]
             conversation += f"{role}: {content}\n"
-    
-    # Add the current user query to the conversation
     conversation += f"user: {user_query}"
 
     agent = Agent(
         name="Assistant",
         instructions="You are a helpful assistant. Use the conversation history to answer questions accurately.",
         model=model,
+        tools=[web_search]
+        
     )
 
-    # Pass the concatenated conversation string to the Runner
     result = await Runner.run(starting_agent=agent, input=conversation)
     return result.final_output
